@@ -21,72 +21,83 @@ nav.addEventListener("click", (event) => {
   }
 });
 
-const snapTargets = [...document.querySelectorAll("main > section, .footer")];
-let isSnapScrolling = false;
+const pageSections = [...document.querySelectorAll("main > section, .footer")];
+let isPageScrolling = false;
+let wheelDelta = 0;
+let wheelResetTimer;
 
-function easeInOutCubic(t) {
-  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-}
-
-function getSnapPoints() {
+function getCurrentSectionIndex() {
   const headerOffset = 76;
-  const viewport = window.innerHeight;
-  const maxScroll = document.documentElement.scrollHeight - viewport;
-  const points = new Set([0, Math.max(0, maxScroll)]);
+  const currentPosition = window.scrollY + headerOffset;
 
-  snapTargets.forEach((target) => {
-    const top = Math.max(0, target.offsetTop - headerOffset);
-    points.add(Math.round(top));
-  });
-
-  return [...points].sort((a, b) => a - b);
-}
-
-function animateScrollTo(targetY) {
-  const startY = window.scrollY;
-  const distance = targetY - startY;
-  const duration = Math.min(1150, Math.max(820, Math.abs(distance) * 0.32));
-  const startTime = performance.now();
-
-  isSnapScrolling = true;
-
-  function step(now) {
-    const progress = Math.min(1, (now - startTime) / duration);
-    window.scrollTo(0, startY + distance * easeInOutCubic(progress));
-
-    if (progress < 1) {
-      requestAnimationFrame(step);
-      return;
-    }
-
-    window.scrollTo(0, targetY);
-    setTimeout(() => {
-      isSnapScrolling = false;
-    }, 80);
-  }
-
-  requestAnimationFrame(step);
+  return pageSections.reduce(
+    (currentIndex, section, index) =>
+      section.offsetTop <= currentPosition ? index : currentIndex,
+    0
+  );
 }
 
 window.addEventListener(
   "wheel",
   (event) => {
-    if (event.ctrlKey || Math.abs(event.deltaY) < 45) return;
+    if (event.ctrlKey) return;
 
     event.preventDefault();
-    if (isSnapScrolling) return;
+    if (isPageScrolling) return;
 
-    const current = window.scrollY;
-    const points = getSnapPoints();
-    const direction = Math.sign(event.deltaY);
-    const target =
-      direction > 0
-        ? points.find((point) => point > current + 48)
-        : [...points].reverse().find((point) => point < current - 48);
+    wheelDelta += event.deltaY;
+    window.clearTimeout(wheelResetTimer);
+    wheelResetTimer = window.setTimeout(() => {
+      wheelDelta = 0;
+    }, 160);
 
-    if (target !== undefined) {
-      animateScrollTo(target);
+    if (Math.abs(wheelDelta) < 24) return;
+
+    const direction = Math.sign(wheelDelta);
+    wheelDelta = 0;
+    const currentIndex = getCurrentSectionIndex();
+    const currentSection = pageSections[currentIndex];
+    const headerOffset = 76;
+    const sectionTop = Math.max(0, currentSection.offsetTop - headerOffset);
+    const sectionBottom = Math.max(
+      sectionTop,
+      currentSection.offsetTop + currentSection.offsetHeight - window.innerHeight
+    );
+    const isTallSection = currentSection.offsetHeight > window.innerHeight + headerOffset;
+
+    if (isTallSection) {
+      const canMoveDownInside = direction > 0 && window.scrollY < sectionBottom - 8;
+      const canMoveUpInside = direction < 0 && window.scrollY > sectionTop + 8;
+
+      if (canMoveDownInside || canMoveUpInside) {
+        const pageDistance = Math.max(320, window.innerHeight - headerOffset);
+        const targetTop = direction > 0
+          ? Math.min(sectionBottom, window.scrollY + pageDistance)
+          : Math.max(sectionTop, window.scrollY - pageDistance);
+
+        isPageScrolling = true;
+        window.scrollTo({ top: targetTop, behavior: "smooth" });
+        window.setTimeout(() => {
+          isPageScrolling = false;
+        }, 900);
+        return;
+      }
     }
+
+    const targetIndex = Math.min(
+      pageSections.length - 1,
+      Math.max(0, currentIndex + direction)
+    );
+
+    if (targetIndex === currentIndex) return;
+
+    isPageScrolling = true;
+    const targetTop = Math.max(0, pageSections[targetIndex].offsetTop - headerOffset);
+    window.scrollTo({ top: targetTop, behavior: "smooth" });
+
+    window.setTimeout(() => {
+      isPageScrolling = false;
+    }, 900);
   },
   { passive: false }
 );
